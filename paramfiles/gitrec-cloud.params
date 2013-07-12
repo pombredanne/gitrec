@@ -1,0 +1,7 @@
+EVENT_LOGS_INPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/raw_events/*/*/*/*
+USER_IDS_OUTPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_ids
+ITEM_IDS_OUTPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_ids
+USER_GRAVATAR_IDS_OUTPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_gravatar_ids
+USER_ITEM_SCORES_OUTPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_item_scores
+ITEM_METADATA_OUTPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_metadata
+ITEM_RECS_OUTPUT_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_recs
