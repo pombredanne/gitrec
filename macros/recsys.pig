@@ -101,3 +101,83 @@ RETURNS ii_nhoods {
     walk_step_3     =   Graph__PersonalizedPagerank_Iterate(walk_step_2, trans_mat, $teleport_prob, $neighborhood_size);
     $ii_nhoods      =   Graph__RandomWalk_Complete(walk_step_3);
 };
+
+----------------------------------------------------------------------------------------------------
+
+/*
+ * ui_affinities: {user: int, item: int, affinity: float, reason_flag: int/chararray}
+ * item_nhoods:   {item: int, neighbor: int, affinity: float}
+ * -->
+ * user_nhoods:   {user: int, item: int, affinity: float, reason: int, reason_flag: int/chararray} 
+ */
+DEFINE Recsys__UserItemNeighborhoods(ui_affinities, item_nhoods)
+RETURNS user_nhoods {
+    user_nhoods_tmp =   FOREACH (JOIN $ui_affinities BY item, $item_nhoods BY item) GENERATE
+                                              user AS user,
+                            $item_nhoods::neighbor AS item,
+                            (float) SQRT($ui_affinities::affinity *
+                                         $item_nhoods::affinity) AS affinity,
+                                $item_nhoods::item AS reason,
+                                       reason_flag AS reason_flag;
+
+    -- hack to get around a NullPointerException bug in the TOP builtin UDF
+    $user_nhoods    =   FOREACH (GROUP user_nhoods_tmp BY
+                                 ((((long) (user + item) * (long) (user + item + 1)) / 2) + item)) {
+                            sorted = ORDER user_nhoods_tmp BY affinity DESC;
+                            best   = LIMIT sorted 1;
+                            GENERATE FLATTEN(best) AS (user, item, affinity, reason, reason_flag);
+                        }
+};
+
+/*
+ * user_nhoods:   {user: int, item: int, affinity: float, reason: int, reason_flag: int/chararray}
+ * ui_affinities: {user: int, item: int, affinity: float, reason_flag: int/chararray}
+ * -->
+ * user_nhoods_filt: {user: int, item: int, affinity: float, reason: int, reason_flag: int/chararray}
+ */
+DEFINE Recsys__FilterItemsAlreadySeenByUser(user_nhoods, ui_affinities)
+RETURNS filtered {
+    joined      =   JOIN $user_nhoods   BY (user, item) LEFT OUTER,
+                         $ui_affinities BY (user, item);
+    $filtered   =   FOREACH (FILTER joined BY $ui_affinities::item IS null) GENERATE
+                               $user_nhoods::user AS user,
+                               $user_nhoods::item AS item,
+                           $user_nhoods::affinity AS affinity,
+                             $user_nhoods::reason AS reason,
+                        $user_nhoods::reason_flag AS reason_flag;
+};
+
+/*
+ * user_nhoods: {user: int, item: int, affinity: float, reason: int, reason_flag: int/chararray}
+ * num_recs:    int
+ * --> 
+ * user_recs: {user: int, item: int, affinity: float, reason: int, reason_flag: int/chararray}
+ */
+DEFINE Recsys__TopNUserRecs(user_nhoods, num_recs)
+RETURNS user_recs {
+    $user_recs  =   FOREACH (GROUP $user_nhoods BY user) {
+                        sorted = ORDER $user_nhoods BY affinity DESC;
+                        best   = LIMIT sorted $num_recs;
+                        GENERATE FLATTEN(best) AS (user, item, affinity, reason, reason_flag);
+                    }
+};
+
+/*
+ * user_nhoods: {user: int, item: int, affinity: float, reason: int, reason_flag: int/chararray}
+ * user_names:  {id: int, name: chararray}
+ * item_names:  {id: int, name: chararray}
+ * -->
+ * with_names:  {user: chararray, item: chararray, affinity: float, reason: chararray, reason_flag: int/chararray}
+ */
+DEFINE Recsys__UserRecsIntegerIdsToNames(user_nhoods, user_names, item_names)
+RETURNS with_names {
+    join_1      =   FOREACH (JOIN $user_names BY id, $user_nhoods BY user) GENERATE
+                        name AS user, item AS item, affinity AS affinity,
+                        reason AS reason, reason_flag AS reason_flag;    
+    join_2      =   FOREACH (JOIN $item_names BY id, join_1 BY item) GENERATE
+                        user AS user, name AS item, affinity AS affinity,
+                        reason AS reason, reason_flag AS reason_flag;
+    $with_names =   FOREACH (JOIN $item_names BY id, join_2 BY reason) GENERATE
+                        user AS user, item AS item, affinity AS affinity,
+                        name AS reason, reason_flag AS reason_flag;
+};

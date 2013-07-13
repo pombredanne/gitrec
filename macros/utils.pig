@@ -17,22 +17,22 @@
 ----------------------------------------------------------------------------------------------------
 
 REGISTER 'datafu-0.0.10.jar';
-DEFINE Utils__EnumerateFromOne datafu.pig.bags.Enumerate('1');
+DEFINE Utils__Enumerate datafu.pig.bags.Enumerate('1');
 
 ----------------------------------------------------------------------------------------------------
 
 /*
  * events: {anything as long as it has the field entity_field refers to}
- * entity_field: name of the field to assign ids to
+ * name_field: name of the field to assign ids to
  * -->
  * id_map: {id: int, name: chararray}
  */
-DEFINE Utils__AssignIntegerIds(events, entity_field)
+DEFINE Utils__AssignIntegerIds(events, name_field)
 returns id_map {
-    grouped             =   GROUP $events BY $entity_field;
-    names               =   FOREACH grouped GENERATE group AS name;
-    enumerated          =   FOREACH (GROUP names ALL) GENERATE
-                                FLATTEN(Utils__EnumerateFromOne(names))
-                                AS (name, id);
-    $id_map             =   FOREACH enumerated GENERATE id, name;
+    names       =   FOREACH $events GENERATE $name_field;
+    names       =   DISTINCT names;
+    enumerated  =   FOREACH (GROUP names ALL) GENERATE
+                        FLATTEN(Utils__Enumerate(names))
+                        AS (name, id);
+    $id_map     =   FOREACH enumerated GENERATE id, name;
 };

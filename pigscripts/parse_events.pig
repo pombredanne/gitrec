@@ -16,47 +16,30 @@
 
 ----------------------------------------------------------------------------------------------------
 
--- SET default_parallel $DEFAULT_PARALLEL;
-
 /*
  * These parameters default for running the gitrec on a subset of the data on your local machine
  * (see note in README.md about how to get the input data).
- * to run on a cluster, set the s3 locations you want in paramfiles/gitrec-cloud.params
+ * To run on a cluster, set the s3 locations you want in paramfiles/gitrec-cloud.params
  * and use "mortar:run pigscripts/gitrec.pig -f paramfiles/gitrec-cloud.params"
  */
 
-%default EVENT_LOGS_INPUT_PATH         '../../../data/github/raw_events/2013/06/{01,02,03}/*'
-%default USER_IDS_OUTPUT_PATH          '../../../data/github/user_ids'
-%default ITEM_IDS_OUTPUT_PATH          '../../../data/github/item_ids'
-%default USER_GRAVATAR_IDS_OUTPUT_PATH '../../../data/github/user_gravatar_ids'
-%default USER_ITEM_SCORES_OUTPUT_PATH  '../../../data/github/user_item_scores'
-%default ITEM_METADATA_OUTPUT_PATH     '../../../data/github/item_metadata'
-%default ITEM_RECS_OUTPUT_PATH         '../../../data/github/item_recs'
+%default EVENT_LOGS_PATH        '../../../data/github/raw_events/2013/06/{01,02,03,04,05}/*'
+%default USER_IDS_PATH          '../../../data/github/user_ids'
+%default ITEM_IDS_PATH          '../../../data/github/item_ids'
+%default USER_GRAVATAR_IDS_PATH '../../../data/github/user_gravatar_ids'
+%default USER_ITEM_SCORES_PATH  '../../../data/github/user_item_scores'
+%default ITEM_METADATA_PATH     '../../../data/github/item_metadata'
 
-/*
- * Algorithm parameters
- * There is no easy way to choose these; the values here were chosen using
- * just a combination of intuition and careful observation of intermediate outputs.
- */
-
-%default MIN_LINK_WEIGHT    0.12     -- links between items will be filtered if their strength
-                                     -- is less than this value by the metric we will calculate
-%default BAYESIAN_PRIOR     25.0     -- this is to guard the collaborative filter
-                                     -- against the effects of small sample sizes
-%default MIN_REC_ITEM_SCORE 3.0      -- this ensures that items below a minimum popularity threshold
-                                     -- will never be recommended
-%default NEIGHBORHOOD_SIZE  20       -- generate this many recommendations per item
+%default DEFAULT_PARALLEL 1
+SET default_parallel $DEFAULT_PARALLEL
 
 REGISTER 'gitrec_udfs.py' USING jython AS udfs;
-IMPORT   'matrix.pig';
-IMPORT   'normalization.pig';
-IMPORT   'recsys.pig';
 IMPORT   'utils.pig';
 
 ----------------------------------------------------------------------------------------------------
 
 -- load the raw event logs
-events          =   LOAD '$EVENT_LOGS_INPUT_PATH'
+events          =   LOAD '$EVENT_LOGS_PATH'
                     USING org.apache.pig.piggybank.storage.JsonLoader('
                         actor: chararray,
                         actor_attributes: (
@@ -227,7 +210,6 @@ most_recent_events  =   FOREACH (GROUP parsed_events BY item) GENERATE
 
 item_metadata       =   FOREACH most_recent_events GENERATE
                             item,
-                            (metadata.fork == 'true'? 0 : 1) AS is_valid_rec: int,
                             (metadata.language is null ? 'Unknown' : metadata.language) AS language,
                             metadata.forks AS num_forks,
                             metadata.stargazers AS num_stars,
@@ -240,7 +222,6 @@ item_metadata       =   FOREACH most_recent_events GENERATE
 
 item_metadata       =   FOREACH (JOIN item_activities BY item, item_metadata BY item) GENERATE
                                             item_metadata::item AS item,
-                                                   is_valid_rec AS is_valid_rec,
                                                        activity AS activity,
                                                       num_forks AS num_forks,
                                                       num_stars AS num_stars,
@@ -250,105 +231,14 @@ item_metadata       =   FOREACH (JOIN item_activities BY item, item_metadata BY 
 
 ----------------------------------------------------------------------------------------------------
 
-/*
- * Reduce the graph of user-item affinities to a graph of item-item affinities.
- * and filter out links to forks of repos, as they are unlikely to be of general interest.
- */
+rmf $USER_IDS_PATH;
+rmf $ITEM_IDS_PATH;
+rmf $USER_GRAVATAR_IDS_PATH;
+rmf $USER_ITEM_SCORES_PATH;
+rmf $ITEM_METADATA_PATH;
 
-ii_links_raw    =   Recsys__UIScores_To_IILinks(ui_scores, $MIN_LINK_WEIGHT);
-metadata_tmp    =   FOREACH item_metadata GENERATE item, is_valid_rec;
-joined          =   JOIN ii_links_raw BY col, metadata_tmp BY item;
-filtered        =   FILTER joined BY is_valid_rec == 1;
-ii_links_raw    =   FOREACH filtered GENERATE row AS row, col AS col, val AS val;
-
-/*
- * Use Bayes Theorem to estimate the probability of a user
- * interacting with item A given that they interacted with item B
- * and call that the affinity of A -> B.
- * These affinities represent "confidence" that items are similar and are asymmetric.
- */
-
-ii_links_bayes  =   Recsys__IILinksRaw_To_IILinksBayes(ii_links_raw, $BAYESIAN_PRIOR);
-
-/*
- * Give a small boost to links to more popular items,
- * filter out items below a minimum popularity threshold,
- * and renormalize all values to be between 0 and 1.
- */
-
-item_scores     =   FOREACH (FILTER item_metadata BY score >= $MIN_REC_ITEM_SCORE) GENERATE item, score; 
-ii_links_boost  =   FOREACH (JOIN item_scores BY item, ii_links_bayes BY col) GENERATE
-                        row AS row, col AS col,
-                        val * (float) LOG(score) AS val;
-ii_links_boost  =   Normalization__LinearTransform(ii_links_boost, 'val', 'row, col');
-
- /*
-  * To improve performance, trim all but the top NEIGHBORHOOD_SIZE links for each item.
-  */
-
-ii_links        =   Matrix__TrimRows(ii_links_boost, 'DESC', $NEIGHBORHOOD_SIZE);
-
-/*
- * We define "distance" to be the reciprocal of "affinity",
- * so similar items are "close" and dissimilar items are "far".
- *
- * We then follow shortest paths on this distance graph between items.
- * This has two effects:
- *     1) if A -> B -> C is a shorter path than A -> D,
- *        we'll know to recommend C over D even though it is an indirect connection
- *     2) if an item only has a few links, following shortest paths
- *        will give it a full set of NEIGHBORHOOD_SIZE in most cases
- *
- * The macro we use re-inverts the weights on the graph again to go back to affinities from distances,
- * and renormalizes so that all values are between 0 and 1.
- */
-
-item_nhoods     =   Recsys__IILinksShortestPathsThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
-
-----------------------------------------------------------------------------------------------------
-
-/*
- * The item neighborhoods generated above are used to later in this script,
- * but we also output a version with names and metadata that serves as a
- * "repos similar to the given repo" recommender.
- */
-
-item_nhoods_with_names  =   Matrix__IdsToNames(item_nhoods, item_ids);
-item_nhoods_ranked      =   Matrix__RankRows(item_nhoods_with_names, 'DESC');
-
-item_data_for_recs      =   FOREACH (JOIN item_ids BY id, item_metadata BY item) GENERATE
-                                       name AS item,
-                                   language AS language,
-                                  num_forks AS num_forks,
-                                  num_stars AS num_stars,
-                                description AS description;
-
-item_recs               =   FOREACH (JOIN item_nhoods_ranked BY col, item_data_for_recs BY item) GENERATE
-                                        row AS item,
-                                       rank AS rank,
-                                        col AS rec,
-                                   language AS language,
-                                  num_forks AS num_forks,
-                                  num_stars AS num_stars,
-                                description AS description;
-
-item_recs               =   FOREACH (GROUP item_recs BY item) {
-                                sorted = ORDER item_recs BY rank ASC;
-                                GENERATE FLATTEN(sorted);
-                            }
-
-----------------------------------------------------------------------------------------------------
-
-rmf $USER_IDS_OUTPUT_PATH;
-rmf $ITEM_IDS_OUTPUT_PATH;
-rmf $USER_GRAVATAR_IDS_OUTPUT_PATH;
-rmf $USER_ITEM_SCORES_OUTPUT_PATH;
-rmf $ITEM_METADATA_OUTPUT_PATH;
-rmf $ITEM_RECS_OUTPUT_PATH;
-
-STORE user_ids      INTO '$USER_IDS_OUTPUT_PATH'          USING PigStorage();
-STORE item_ids      INTO '$ITEM_IDS_OUTPUT_PATH'          USING PigStorage();
-STORE gravatar_ids  INTO '$USER_GRAVATAR_IDS_OUTPUT_PATH' USING PigStorage();
-STORE ui_scores     INTO '$USER_ITEM_SCORES_OUTPUT_PATH'  USING PigStorage();
-STORE item_metadata INTO '$ITEM_METADATA_OUTPUT_PATH'     USING PigStorage();
-STORE item_recs     INTO '$ITEM_RECS_OUTPUT_PATH'         USING PigStorage();
+STORE user_ids      INTO '$USER_IDS_PATH'          USING PigStorage();
+STORE item_ids      INTO '$ITEM_IDS_PATH'          USING PigStorage();
+STORE gravatar_ids  INTO '$USER_GRAVATAR_IDS_PATH' USING PigStorage();
+STORE ui_scores     INTO '$USER_ITEM_SCORES_PATH'  USING PigStorage();
+STORE item_metadata INTO '$ITEM_METADATA_PATH'     USING PigStorage();
