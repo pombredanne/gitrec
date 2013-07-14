@@ -4,6 +4,7 @@ ITEM_IDS_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_ids
 USER_GRAVATAR_IDS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_gravatar_ids
 USER_ITEM_SCORES_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_item_scores
 ITEM_METADATA_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_metadata
+ITEM_NHOODS_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_nhoods
 ITEM_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_recs
 USER_CONTRIB_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_contrib_recs
 USER_GENERAL_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_general_recs
