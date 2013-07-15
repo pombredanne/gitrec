@@ -19,20 +19,26 @@
 REGISTER 'datafu-0.0.10.jar';
 DEFINE Utils__Enumerate datafu.pig.bags.Enumerate('1');
 
-----------------------------------------------------------------------------------------------------
+----------------------`------------------------------------------------------------------------------
 
 /*
- * events: {anything as long as it has the field entity_field refers to}
+ * Enumerates the distinct values of one field from a relation, producing unique integer ids.
+ * You will have to join this id map back to your original data to convert representations.
+ *
+ * We wanted to implement this generically in the macro, but there were problems maintaining
+ * the schema of the other fields in the input data.
+ *
+ * data: {anything as long as it has the field name_field refers to}
  * name_field: name of the field to assign ids to
  * -->
  * id_map: {id: int, name: chararray}
  */
-DEFINE Utils__AssignIntegerIds(events, name_field)
-returns id_map {
-    names       =   FOREACH $events GENERATE $name_field;
-    names       =   DISTINCT names;
-    enumerated  =   FOREACH (GROUP names ALL) GENERATE
-                        FLATTEN(Utils__Enumerate(names))
-                        AS (name, id);
-    $id_map     =   FOREACH enumerated GENERATE id, name;
+DEFINE Utils__AssignIntegerIds(data, name_field)
+RETURNS id_map {
+    names           =   FOREACH $data GENERATE $name_field;
+    names           =   DISTINCT names;
+    enumerated      =   FOREACH (GROUP names ALL) GENERATE
+                            FLATTEN(Utils__Enumerate(names))
+                            AS (name, id);
+    $id_map         =   FOREACH enumerated GENERATE id, name;
 };

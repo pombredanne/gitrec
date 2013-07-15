@@ -174,35 +174,51 @@ item_activities =   FOREACH (GROUP ui_scores BY item) GENERATE
 
 ----------------------------------------------------------------------------------------------------
 
--- if a user interact with a fork of a repo, in almost all cases
--- it is better to give recommendations based on the original repo for that fork
--- instead of the fork itself.
+/*
+ * If a user interact with a fork of a repo, in almost all cases
+ * it is better to give recommendations based on the original repo for that fork
+ * instead of the fork itself. We don't have a way of telling for sure what the
+ * original repo is, so we guess that is its the most-forked repo of the same name.
+ * In the average case, this works pretty well.
+ */
 
 events_for_fork_map =   FOREACH parsed_events GENERATE
                             item AS item,
                             metadata.name AS repo_name,
-                            (metadata.fork == 'true'? 0 : 1) AS is_not_a_fork;
+                            (metadata.fork == 'true'? 1 : 0) AS is_a_fork,
+                            metadata.forks AS num_forks;
 
-unique_items        =   DISTINCT events_for_fork_map;
+unique_items        =   FOREACH (GROUP events_for_fork_map BY item) GENERATE
+                            FLATTEN(TOP(1, 3, events_for_fork_map))
+                            AS (item, repo_name, is_a_fork, num_forks);
+
 original_items      =   FOREACH (GROUP unique_items BY repo_name) GENERATE
-                            FLATTEN(TOP(1, 2, unique_items))
-                            AS (original_item, repo_name, is_not_a_fork);
+                            FLATTEN(TOP(1, 3, unique_items))
+                            AS (original_item, repo_name, is_a_fork, num_forks);
 
 fork_map            =   FOREACH (JOIN original_items BY repo_name, unique_items BY repo_name) GENERATE
-                            item AS item, original_item AS original_item;
+                                               item AS item,
+                                      original_item AS original_item,
+                            unique_items::is_a_fork AS is_a_fork;
 
 ui_scores           =   FOREACH (JOIN fork_map BY item, ui_scores BY item) GENERATE
                                          user AS user,
-                                original_item AS item,
+                            -- only use our guess at a mapping if the repo is actually a fork
+                            (is_a_fork == 1 ? fork_map::original_item : fork_map::item)
+                                              AS item,
                             specific_interest AS specific_interest,
                              general_interest AS general_interest,
                                         score AS score,
-                            (fork_map::item != fork_map::original_item ? 1 : 0) AS mapped_from_fork;
+                            -- is mapped_from_fork if it is a fork, and if the repo it is mapped to is not itself
+                            (is_a_fork == 1 ? (fork_map::original_item != fork_map::item ? 1 : 0) : 0)
+                                              AS mapped_from_fork;
 
 ----------------------------------------------------------------------------------------------------
 
--- we have repo metadata with every event, but we only want the metadata
--- for the most recent state of the repo
+/*
+ * We have repo metadata with every event, but we only want the metadata
+ * for the most recent state of the repo
+ */
 
 most_recent_events  =   FOREACH (GROUP parsed_events BY item) GENERATE
                             FLATTEN(TOP(1, 4, parsed_events))
@@ -216,9 +232,11 @@ item_metadata       =   FOREACH most_recent_events GENERATE
                             metadata.description AS description,
                             2 * metadata.forks + metadata.stargazers AS popularity;
 
--- the "score" field is a combined measure of popularity and activity
--- this is necessary because repos like django-old have lots of stars,
--- but are abandoned, so they should not be considered as recommendations
+/*
+ * the "score" field is a combined measure of popularity and activity
+ * this is necessary because repos like django-old have lots of stars,
+ * but are abandoned, so they should not be considered as recommendations
+ */
 
 item_metadata       =   FOREACH (JOIN item_activities BY item, item_metadata BY item) GENERATE
                                             item_metadata::item AS item,

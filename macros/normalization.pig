@@ -20,7 +20,7 @@
  * Map a field into the range [0, 1],
  * with the option of also applying a transform (SQRT or LOG) beforehand
  *
- * samples: {anything}
+ * samples: any relation
  * field: chararray, name of the field to normalize
  * projection: comma-delimited list of the other fields in the relation
  * -->

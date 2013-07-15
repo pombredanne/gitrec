@@ -68,7 +68,7 @@ RETURNS ii_links_bayes {
 DEFINE Recsys__IILinksShortestPathsTwoSteps(ii_links, neighborhood_size)
 RETURNS ii_nhoods {
     distance_mat    =   FOREACH $ii_links  GENERATE row, col, 1.0f / val AS val;
-    nhoods_tmp      =   Graph__ShortestPathsTwoSteps(distance_mat, $neighborhood_size);
+    nhoods_tmp      =   Graph__ShortestPaths_TwoSteps(distance_mat, $neighborhood_size);
     nhoods_tmp_inv  =   FOREACH nhoods_tmp GENERATE row, col, 1.0f / val AS val;
     nhoods_tmp_norm =   Normalization__LinearTransform(nhoods_tmp_inv, 'val', 'row, col');
     $ii_nhoods      =   FOREACH nhoods_tmp_norm GENERATE row, col, (float) val AS val;
@@ -77,7 +77,7 @@ RETURNS ii_nhoods {
 DEFINE Recsys__IILinksShortestPathsThreeSteps(ii_links, neighborhood_size)
 RETURNS ii_nhoods {
     distance_mat    =   FOREACH $ii_links  GENERATE row, col, 1.0f / val AS val;
-    nhoods_tmp      =   Graph__ShortestPathsThreeSteps(distance_mat, $neighborhood_size);
+    nhoods_tmp      =   Graph__ShortestPaths_ThreeSteps(distance_mat, $neighborhood_size);
     nhoods_tmp_inv  =   FOREACH nhoods_tmp GENERATE row, col, 1.0f / val AS val;
     nhoods_tmp_norm =   Normalization__LinearTransform(nhoods_tmp_inv, 'val', 'row, col');
     $ii_nhoods      =   FOREACH nhoods_tmp_norm GENERATE row, col, (float) val AS val;
