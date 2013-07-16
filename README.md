@@ -12,8 +12,8 @@ that is actually a macro in the file denoted by the portion before the underscor
 
 If you want to run these scripts yourself, you will have to copy Github event logs from the [Github Archive](http://www.githubarchive.org/) into your own S3 bucket, and optionally download a sample to use for local development.
 
-    - [This repo](https://github.com/MarkRoddy/github-data) has a script for copying the logs to your S3 bucket; be sure to run it on an EC2 node for high bandwidth to S3; also be sure to run it in a screen session so your ssh doesn't timeout.
-    - If you want to use a sample of the logs for local development, download it from your S3 bucket so that the following path, relative to the file `pigscripts/parse_events.pig` hits the data: `../../../data/github/raw_events/2013/06/{01,02,03,04,05}/*`. 5 days should be enough to see sensible results for active repos, but not so much that your laptop cannot handle it.
+- [This repo](https://github.com/MarkRoddy/github-data) has a script for copying the logs to your S3 bucket; be sure to run it on an EC2 node for high bandwidth to S3; also be sure to run it in a screen session so your ssh doesn't timeout.
+- If you want to use a sample of the logs for local development, download it from your S3 bucket so that the following path, relative to the file `pigscripts/parse_events.pig` hits the data: `../../../data/github/raw_events/2013/06/{01,02,03,04,05}/*`. 5 days should be enough to see sensible results for active repos, but not so much that your laptop cannot handle it.
 
 To run one of the scripts in local mode, use:
 
