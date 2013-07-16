@@ -200,7 +200,7 @@ events_valued   =   FOREACH events_fork_mapped GENERATE
 events_valued   =   FOREACH events_valued GENERATE
                         user, item,
                         specific_interest, general_interest,
-                        (mapped_from_fork == 0 ? graph_score : graph_score / 5.0) AS graph_score,
+                        (mapped_from_fork == 0 ? graph_score : 0.0) AS graph_score,
                         mapped_from_fork;
 
 ui_totals       =   FOREACH (GROUP events_valued BY (user, item)) GENERATE
@@ -220,7 +220,8 @@ ui_scores       =   FOREACH ui_scores GENERATE
                         user, item,
                         (float) specific_interest,
                         (float) general_interest,
-                        (float) graph_score AS score;
+                        (float) graph_score AS score,
+                        mapped_from_fork;
 
 /*
  * Some users star a ton of repos. One user has starred 11k repos.

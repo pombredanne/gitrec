@@ -42,9 +42,9 @@ SET default_parallel $DEFAULT_PARALLEL
                                      -- is less than this value by the metric we will calculate
 %default BAYESIAN_PRIOR     20.0     -- this is to guard the collaborative filter
                                      -- against the effects of small sample sizes
-%default MIN_REC_ITEM_SCORE 20.0     -- ensure that items below a minimum popularity threshold
+%default MIN_REC_ITEM_SCORE 10.0     -- ensure that items below a minimum popularity threshold
                                      -- will never be recommended
-%default NEIGHBORHOOD_SIZE  21       -- generate (this - 1) many recommendations per item
+%default NEIGHBORHOOD_SIZE  20       -- generate this many recommendations per item
 
 IMPORT   'matrix.pig';
 IMPORT   'normalization.pig';
@@ -57,6 +57,7 @@ ui_scores       =   LOAD '$USER_ITEM_SCORES_PATH' USING PigStorage()
                         specific_interest: float, general_interest: float, score: float,
                         mapped_from_fork: int);
 ui_scores       =   FOREACH ui_scores GENERATE user, item, score;
+ui_scores       =   FILTER ui_scores BY score > 0;
 
 item_metadata   =   LOAD '$ITEM_METADATA_PATH' USING PigStorage()
                     AS (item: int,
@@ -85,22 +86,12 @@ ii_links_raw    =   Recsys__UIScores_To_IILinks(ui_scores, $MIN_LINK_WEIGHT);
 
 ii_links_bayes  =   Recsys__IILinksRaw_To_IILinksBayes(ii_links_raw, $BAYESIAN_PRIOR);
 
+
 /*
- * Give a small boost to links to more popular items,
- * filter out items below a minimum popularity threshold,
- * and renormalize all values to be between 0 and 1.
+ * To improve performance, trim all but the top NEIGHBORHOOD_SIZE links for each item.
  */
 
-ii_links_boost  =   FOREACH (JOIN item_scores BY item, ii_links_bayes BY col) GENERATE
-                        row AS row, col AS col,
-                        val * (float) SQRT(score) AS val;
-ii_links_boost  =   Normalization__LinearTransform(ii_links_boost, 'val', 'row, col');
-
- /*
-  * To improve performance, trim all but the top NEIGHBORHOOD_SIZE links for each item.
-  */
-
-ii_links        =   Matrix__TrimRows(ii_links_boost, 'DESC', $NEIGHBORHOOD_SIZE);
+ii_links        =   Matrix__TrimRows(ii_links_bayes, 'DESC', $NEIGHBORHOOD_SIZE);
 
 /*
  * We define "distance" to be the reciprocal of "affinity",
@@ -117,7 +108,18 @@ ii_links        =   Matrix__TrimRows(ii_links_boost, 'DESC', $NEIGHBORHOOD_SIZE)
  * and renormalizes so that all values are between 0 and 1.
  */
 
-item_nhoods     =   Recsys__IILinksShortestPathsThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
+item_nhoods     =   Recsys__IILinksShortestPathsTwoSteps(ii_links, $NEIGHBORHOOD_SIZE);
+
+/*
+ * Give a small boost to links to more popular items,
+ * filter out items below a minimum popularity threshold,
+ * and renormalize all values to be between 0 and 1.
+ */
+
+item_nhoods     =   FOREACH (JOIN item_scores BY item, item_nhoods BY col) GENERATE
+                        row AS row, col AS col,
+                        val * (float) CBRT(score) AS val;
+item_nhoods     =   Normalization__LinearTransform(item_nhoods, 'val', 'row, col');
 
 ----------------------------------------------------------------------------------------------------
 

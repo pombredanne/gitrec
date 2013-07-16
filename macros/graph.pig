@@ -56,8 +56,8 @@ DEFINE Graph__ShortestPaths_TwoSteps(graph, neighborhood_size)
 RETURNS nhoods {
     graph, vertices     =   Graph__AddSelfLoops($graph);
     squared             =   Matrix__MinPlusSquared(graph);
-    squared_trimmed     =   Matrix__TrimRows(squared, 'ASC', $neighborhood_size);
-    $nhoods             =   FILTER squared_trimmed BY row != col;
+    no_self_loops       =   FILTER squared BY row != col;
+    $nhoods             =   Matrix__TrimRows(no_self_loops, 'ASC', $neighborhood_size);
 };
 
 /*
@@ -76,8 +76,8 @@ RETURNS nhoods {
     squared             =   Matrix__MinPlusSquared(graph);
     squared_trimmed     =   Matrix__TrimRows(squared, 'ASC', $neighborhood_size);
     cubed               =   Matrix__MinPlusProduct(squared_trimmed, graph);
-    cubed_trimmed       =   Matrix__TrimRows(cubed, 'ASC', $neighborhood_size);
-    $nhoods             =   FILTER cubed_trimmed BY row != col;
+    no_self_loops       =   FILTER cubed BY row != col;
+    $nhoods             =   Matrix__TrimRows(no_self_loops, 'ASC', $neighborhood_size);
 };
 
 ----------------------------------------------------------------------------------------------------
