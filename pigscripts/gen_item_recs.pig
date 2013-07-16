@@ -156,6 +156,5 @@ item_recs               =   FOREACH (GROUP item_recs BY item) {
 rmf $ITEM_NHOODS_PATH;
 rmf $ITEM_RECS_PATH;
 
-STORE ii_links_boost INTO 's3n://mortar-prod-sandbox/jpacker/github/ii_links_bayes' USING PigStorage();
 STORE item_nhoods INTO '$ITEM_NHOODS_PATH' USING PigStorage();
 STORE item_recs   INTO '$ITEM_RECS_PATH'   USING PigStorage();
