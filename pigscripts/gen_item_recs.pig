@@ -117,7 +117,7 @@ ii_links        =   Matrix__TrimRows(ii_links_boost, 'DESC', $NEIGHBORHOOD_SIZE)
  * and renormalizes so that all values are between 0 and 1.
  */
 
-item_nhoods     =   Recsys__IILinksRandomWalkThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
+item_nhoods     =   Recsys__IILinksRandomThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
 
 ----------------------------------------------------------------------------------------------------
 

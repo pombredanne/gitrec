@@ -32,7 +32,7 @@ DEFINE Recsys__ReplicateByKey                 com.mortardata.pig.collections.Rep
  * The basic pipline for a collaborative filter goes:
  *    1) Recsys__UIScores_To_IILinks
  *    2) Recsys__IILinksRaw_To_IILinksBayes
- *    3) Recsys__IILinksShortestPathsTwoSteps (or Recsys__IILinksRandomWalkTwoSteps or other alternatives)
+ *    3) Recsys__IILinksShortestPathsTwoSteps (or Recsys__IILinksShortestPathsThreeSteps or other alternatives)
  *    -- by this point you get item-to-item recommendations
  *    4) Recsys__UserItemNeighborhoods
  *    5) Recsys__FilterItemsAlreadySeenByUser
@@ -197,51 +197,6 @@ RETURNS ii_nhoods {
     nhoods_tmp_inv  =   FOREACH nhoods_tmp GENERATE row, col, 1.0f / val AS val;
     nhoods_tmp_norm =   Normalization__LinearTransform(nhoods_tmp_inv, 'val', 'row, col');
     $ii_nhoods      =   FOREACH nhoods_tmp_norm GENERATE row, col, (float) val AS val;
-};
-
-----------------------------------------------------------------------------------------------------
-
-/*
- * This is an alternate Step 3 for the default collaborative filter
- * and the one we use for the Github recommender.
- *
- * One thing that the shortest path macros does not detect is that
- * if there are two paths from item A to item D, ex.
- * A -> B -> D and A -> C -> D, then A is probably more similar to D
- * than if there had been only one path.
- *
- * These Random Walk macros provide an alternative algorithm that accounts for this.
- * The follow a random walk on the similarity graph from each vertex as a source,
- * with transition probabilities being proportional to the weight of each edge.s way
- * This way, the similar items to a given item are the items in its neighborhood that 
- * you have a high probability of ending up at after the random walk completes.
- *
- * ii_links: {row: int, col: int, val: float}
- * neighborhood_size: int
- * -->
- * ii_nhoods: {row: int, col: int, val: float}
- */
-DEFINE Recsys__IILinksRandomWalkTwoSteps(ii_links, neighborhood_size)
-RETURNS ii_nhoods {
-    trans_mat, walk_step_1  =   Graph__RandomWalk_Init($ii_links);
-    walk_step_2             =   Graph__RandomWalk_Step(walk_step_1, trans_mat, $neighborhood_size);
-    $ii_nhoods              =   Graph__RandomWalk_Complete(walk_step_2);
-};
-
-/*
- * See notes for Recsys__IILinksRandomWalkThreeSteps
- *
- * ii_links: {row: int, col: int, val: float}
- * neighborhood_size: int
- * -->
- * ii_nhoods: {row: int, col: int, val: float}
- */
-DEFINE Recsys__IILinksRandomWalkThreeSteps(ii_links, neighborhood_size)
-RETURNS ii_nhoods {
-    trans_mat, walk_step_1  =   Graph__RandomWalk_Init($ii_links);
-    walk_step_2             =   Graph__RandomWalk_Step(walk_step_1, trans_mat, $neighborhood_size);
-    walk_step_3             =   Graph__RandomWalk_Step(walk_step_2, trans_mat, $neighborhood_size);
-    $ii_nhoods              =   Graph__RandomWalk_Complete(walk_step_2);
 };
 
 ----------------------------------------------------------------------------------------------------
