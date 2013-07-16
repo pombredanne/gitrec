@@ -38,12 +38,8 @@ DEFINE Recsys__ReplicateByKey                 com.mortardata.pig.collections.Rep
  *    5) Recsys__FilterItemsAlreadySeenByUser
  *    6) Recsys__TopNUserRecs
  *    -- by this point you get user-to-item recommendations
+ *
  * See the comments for each macro for more details.
- *
- * Content-based filtering is still experimental.
- * An efficient implementation of K-Nearest-Neighbors is being worked on,
- * but is not yet ready for public consumption.
- *
  */
 ----------------------------------------------------------------------------------------------------
 
@@ -357,69 +353,3 @@ RETURNS with_names {
                         user AS user, item AS item, affinity AS affinity,
                         name AS reason, reason_flag AS reason_flag;
 };
-
-----------------------------------------------------------------------------------------------------
-
-/*
- * PROTOTYPE KNN IMPLEMENTATION FOR CONTENT-BASED FILTERING
- * NOT READY FOR PUBLIC CONSUMPTION
- *
- * items: {id: int, features: PigCollection}
- * -->
- * global_knns: {row: int, col: int, val: float}
- */
-DEFINE Recsys__KNearestNeighbors(items)
-RETURNS global_knns { 
-    replicated      =   FOREACH $items GENERATE
-                            id, FLATTEN(Recsys__ReplicateByKey(features)) AS (key, features);
-
-    by_key          =     GROUP replicated BY key;
-    by_key          =    FILTER by_key BY COUNT($1) > 1;
-    partition_knns  =   FOREACH by_key GENERATE
-                            group AS partition_id,
-                            FLATTEN(Recsys__KNearestNeighbors(replicated.(id, features)))
-                            AS (item_id, knn);
-
-    $global_knns    =   FOREACH (GROUP partition_knns BY item_id) GENERATE
-                            group AS row,
-                            FLATTEN(Recsys__FromPigCollectionToBag(Recsys__MergeAndKeepTopN(partition_knns.knn)))
-                            AS (col: int, val: float);
-};
-
-/*
- * PROTOTYPE KNN IMPLEMENTATION FOR CONTENT-BASED FILTERING
- * NOT READY FOR PUBLIC CONSUMPTION
- *
- * items: {id: int, features: PigCollection}
- * -->
- * global_knns: {row: int, col: int, val: float}
- */
-DEFINE Recsys__KNearestNeighbors_ReducerLoadBalanced(items)
-RETURNS global_knns { 
-    replicated      =   FOREACH $items GENERATE
-                        id, FLATTEN(Recsys__ReplicateByKey(features)) AS (key, features);
-
-    key_counts      =   FOREACH (GROUP replicated BY key) GENERATE
-                            group AS key, COUNT($1) AS count;
-    key_counts      =   FILTER key_counts BY count > 1;
-
-    reducer_allocs  =   FOREACH (GROUP key_counts ALL) GENERATE
-                            FLATTEN(Recsys__LoadBalancingReducerAllocation($1))
-                            AS (key, reducer);
-    joined          =   FOREACH (JOIN reducer_allocs BY key, replicated BY key) GENERATE
-                            replicated::id          AS id,
-                            reducer_allocs::key     AS key,
-                            reducer_allocs::reducer AS reducer,
-                            replicated::features    AS features;
-
-    balanced_groups =   GROUP joined BY (key, reducer)
-                        PARTITION BY com.mortardata.pig.partitioners.PrecalculatedPartitioner;
-    partition_knns  =   FOREACH balanced_groups GENERATE
-                            group.key AS partition_id,
-                            FLATTEN(KNearestNeighbors(joined.(id, features)))
-                            AS (item_id, knn);
-
-    $global_knns    =   FOREACH (GROUP partition_knns BY item_id) GENERATE
-                            group AS row,
-                            FLATTEN(Recsys__FromPigCollectionToBag(Recsys__MergeAndKeepTopN(partition_knns.knn)))
-                            AS (col: int, val: float);
