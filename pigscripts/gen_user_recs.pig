@@ -34,15 +34,14 @@
 %default DEFAULT_PARALLEL 1
 SET default_parallel $DEFAULT_PARALLEL
 
-%default MIN_REC_ITEM_SCORE 10.0
 %default NUM_CONTRIB_RECS 20
 %default NUM_GENERAL_RECS 20
 
 REGISTER 'datafu-0.0.10.jar';
 DEFINE Enumerate datafu.pig.bags.Enumerate('1');
 
-IMPORT   'matrix.pig';
-IMPORT   'recsys.pig';
+IMPORT 'matrix.pig';
+IMPORT 'recsys.pig';
 
 ----------------------------------------------------------------------------------------------------
 
@@ -59,7 +58,6 @@ item_metadata   =   LOAD '$ITEM_METADATA_PATH' USING PigStorage()
                         activity: float, num_forks: int, num_stars: int, score: float,
                         language: chararray, description: chararray);
 item_scores     =   FOREACH item_metadata GENERATE item, score;
-item_scores     =   FILTER item_scores BY score >= $MIN_REC_ITEM_SCORE;
 
 user_names      =   LOAD '$USER_IDS_PATH' USING PigStorage()
                     AS (id: int, name: chararray);

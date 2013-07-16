@@ -44,7 +44,8 @@ SET default_parallel $DEFAULT_PARALLEL
                                      -- against the effects of small sample sizes
 %default MIN_REC_ITEM_SCORE 50.0     -- ensure that items below a minimum popularity threshold
                                      -- will never be recommended
-%default NEIGHBORHOOD_SIZE  20       -- number of recommendations to output for each item
+%default NEIGHBORHOOD_SIZE  40       -- number of paths to follow on the similarity graph
+%default NUM_RECS_PER_ITEM  20       -- number of final recommendations to output for each item
 
 IMPORT 'matrix.pig';
 IMPORT 'normalization.pig';
@@ -115,16 +116,18 @@ ii_links        =   Matrix__TrimRows(ii_links_bayes, 'DESC', $NEIGHBORHOOD_SIZE)
  * and renormalizes so that all values are between 0 and 1.
  */
 
-item_nhoods     =   Recsys__IILinksShortestPathsTwoSteps(ii_links, $NEIGHBORHOOD_SIZE);
+item_nhoods     =   Recsys__IILinksShortestPathsThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
 
 /*
- * Give a small boost to links to more popular items,
+ * Give a boost to links to more popular items,
  * and renormalize all values to be between 0 and 1.
  */
 
 item_nhoods     =   FOREACH (JOIN item_scores BY item, item_nhoods BY col) GENERATE
                         row AS row, col AS col,
-                        val * (float) CBRT(score) AS val;
+                        -- stop boosting after score 7.5k, ~= top 2k repos ~= 1k stars, 250 forks
+                        val * (float) SQRT((score < 7500.0 ? score : 7500.0)) AS val;
+item_nhoods     =   Matrix__TrimRows(item_nhoods, 'DESC', $NUM_RECS_PER_ITEM);
 item_nhoods     =   Normalization__LinearTransform(item_nhoods, 'val', 'row, col');
 
 ----------------------------------------------------------------------------------------------------
