@@ -200,7 +200,7 @@ events_valued   =   FOREACH events_fork_mapped GENERATE
 events_valued   =   FOREACH events_valued GENERATE
                         user, item,
                         specific_interest, general_interest,
-                        (mapped_from_fork == 0 ? graph_score : 0.0) AS graph_score,
+                        (mapped_from_fork == 0 ? graph_score : 0.25 * graph_score) AS graph_score,
                         mapped_from_fork;
 
 ui_totals       =   FOREACH (GROUP events_valued BY (user, item)) GENERATE
@@ -266,13 +266,13 @@ item_metadata       =   FOREACH most_recent_events GENERATE
  */
 
 item_metadata       =   FOREACH (JOIN item_activities BY item, item_metadata BY item) GENERATE
-                                            item_metadata::item AS item,
-                                                       activity AS activity,
-                                                      num_forks AS num_forks,
-                                                      num_stars AS num_stars,
-                            (float) SQRT(popularity * activity) AS score,
-                                                       language AS language,
-                                                    description AS description;
+                                              item_metadata::item AS item,
+                                                         activity AS activity,
+                                                        num_forks AS num_forks,
+                                                        num_stars AS num_stars,
+                            (float) (popularity * SQRT(activity)) AS score,
+                                                         language AS language,
+                                                      description AS description;
 
 ----------------------------------------------------------------------------------------------------
 

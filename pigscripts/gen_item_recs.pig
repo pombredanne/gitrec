@@ -40,15 +40,15 @@ SET default_parallel $DEFAULT_PARALLEL
 
 %default MIN_LINK_WEIGHT    0.12     -- links between items will be filtered if their strength
                                      -- is less than this value by the metric we will calculate
-%default BAYESIAN_PRIOR     20.0     -- this is to guard the collaborative filter
+%default BAYESIAN_PRIOR     25.0     -- this is to guard the collaborative filter
                                      -- against the effects of small sample sizes
-%default MIN_REC_ITEM_SCORE 10.0     -- ensure that items below a minimum popularity threshold
+%default MIN_REC_ITEM_SCORE 50.0     -- ensure that items below a minimum popularity threshold
                                      -- will never be recommended
-%default NEIGHBORHOOD_SIZE  20       -- generate this many recommendations per item
+%default NEIGHBORHOOD_SIZE  20       -- number of recommendations to output for each item
 
-IMPORT   'matrix.pig';
-IMPORT   'normalization.pig';
-IMPORT   'recsys.pig';
+IMPORT 'matrix.pig';
+IMPORT 'normalization.pig';
+IMPORT 'recsys.pig';
 
 ----------------------------------------------------------------------------------------------------
 
@@ -78,13 +78,20 @@ item_ids        =   LOAD '$ITEM_IDS_PATH' USING PigStorage()
 ii_links_raw    =   Recsys__UIScores_To_IILinks(ui_scores, $MIN_LINK_WEIGHT);
 
 /*
+ * Filter out links to items below the minimum threshold of popularity
+ */
+
+ii_links_filt   =   FOREACH (JOIN item_scores BY item, ii_links_raw BY col) GENERATE
+                        row AS row, col AS col, val AS val;
+
+/*
  * Use Bayes Theorem to estimate the probability of a user
  * interacting with item A given that they interacted with item B
  * and call that the affinity of A -> B.
  * These affinities represent "confidence" that items are similar and are asymmetric.
  */
 
-ii_links_bayes  =   Recsys__IILinksRaw_To_IILinksBayes(ii_links_raw, $BAYESIAN_PRIOR);
+ii_links_bayes  =   Recsys__IILinksRaw_To_IILinksBayes(ii_links_filt, $BAYESIAN_PRIOR);
 
 
 /*
@@ -112,7 +119,6 @@ item_nhoods     =   Recsys__IILinksShortestPathsTwoSteps(ii_links, $NEIGHBORHOOD
 
 /*
  * Give a small boost to links to more popular items,
- * filter out items below a minimum popularity threshold,
  * and renormalize all values to be between 0 and 1.
  */
 
