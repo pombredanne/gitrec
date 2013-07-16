@@ -32,7 +32,7 @@ DEFINE Recsys__ReplicateByKey                 com.mortardata.pig.collections.Rep
  * The basic pipline for a collaborative filter goes:
  *    1) Recsys__UIScores_To_IILinks
  *    2) Recsys__IILinksRaw_To_IILinksBayes
- *    3) Recsys__IILinksShortestPathsTwoSteps (or Recsys__IILinksShortestPathsThreeSteps or other alternatives)
+ *    3) Recsys__IILinksShortestPathsTwoSteps (or Recsys__IILinksRandomWalkTwoSteps or other alternatives)
  *    -- by this point you get item-to-item recommendations
  *    4) Recsys__UserItemNeighborhoods
  *    5) Recsys__FilterItemsAlreadySeenByUser
@@ -202,7 +202,8 @@ RETURNS ii_nhoods {
 ----------------------------------------------------------------------------------------------------
 
 /*
- * This is an alternate Step 3 for the default collaborative filter.
+ * This is an alternate Step 3 for the default collaborative filter
+ * and the one we use for the Github recommender.
  *
  * One thing that the shortest path macros does not detect is that
  * if there are two paths from item A to item D, ex.
@@ -222,10 +223,9 @@ RETURNS ii_nhoods {
  */
 DEFINE Recsys__IILinksRandomWalkTwoSteps(ii_links, neighborhood_size)
 RETURNS ii_nhoods {
-    trans_mat       =   Matrix__NormalizeRows($ii_links);
-    walk_step_1     =   Graph__RandomWalk_Init(trans_mat);
-    walk_step_2     =   Graph__RandomWalk_Step(walk_step_1, trans_mat, $neighborhood_size);
-    $ii_nhoods      =   Graph__RandomWalk_Complete(walk_step_2);
+    trans_mat, walk_step_1  =   Graph__RandomWalk_Init($ii_links);
+    walk_step_2             =   Graph__RandomWalk_Step(walk_step_1, trans_mat, $neighborhood_size);
+    $ii_nhoods              =   Graph__RandomWalk_Complete(walk_step_2);
 };
 
 /*
@@ -238,11 +238,10 @@ RETURNS ii_nhoods {
  */
 DEFINE Recsys__IILinksRandomWalkThreeSteps(ii_links, neighborhood_size)
 RETURNS ii_nhoods {
-    trans_mat       =   Matrix__NormalizeRows($ii_links);
-    walk_step_1     =   Graph__RandomWalk_Init(trans_mat);
-    walk_step_2     =   Graph__RandomWalk_Step(walk_step_1, trans_mat, $neighborhood_size);
-    walk_step_3     =   Graph__RandomWalk_Step(walk_step_2, trans_mat, $neighborhood_size);
-    $ii_nhoods      =   Graph__RandomWalk_Complete(walk_step_3);
+    trans_mat, walk_step_1  =   Graph__RandomWalk_Init($ii_links);
+    walk_step_2             =   Graph__RandomWalk_Step(walk_step_1, trans_mat, $neighborhood_size);
+    walk_step_3             =   Graph__RandomWalk_Step(walk_step_2, trans_mat, $neighborhood_size);
+    $ii_nhoods              =   Graph__RandomWalk_Complete(walk_step_2);
 };
 
 ----------------------------------------------------------------------------------------------------

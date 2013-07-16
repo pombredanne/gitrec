@@ -93,7 +93,7 @@ ii_links_bayes  =   Recsys__IILinksRaw_To_IILinksBayes(ii_links_raw, $BAYESIAN_P
 
 ii_links_boost  =   FOREACH (JOIN item_scores BY item, ii_links_bayes BY col) GENERATE
                         row AS row, col AS col,
-                        val * (float) LOG(score) AS val;
+                        val * (float) CBRT(score) AS val;
 ii_links_boost  =   Normalization__LinearTransform(ii_links_boost, 'val', 'row, col');
 
  /*
@@ -117,7 +117,7 @@ ii_links        =   Matrix__TrimRows(ii_links_boost, 'DESC', $NEIGHBORHOOD_SIZE)
  * and renormalizes so that all values are between 0 and 1.
  */
 
-item_nhoods     =   Recsys__IILinksShortestPathsThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
+item_nhoods     =   Recsys__IILinksRandomWalkThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
 
 ----------------------------------------------------------------------------------------------------
 
@@ -156,5 +156,6 @@ item_recs               =   FOREACH (GROUP item_recs BY item) {
 rmf $ITEM_NHOODS_PATH;
 rmf $ITEM_RECS_PATH;
 
+STORE ii_links_boost INTO 's3n://mortar-prod-sandbox/jpacker/github/ii_links_bayes' USING PigStorage();
 STORE item_nhoods INTO '$ITEM_NHOODS_PATH' USING PigStorage();
 STORE item_recs   INTO '$ITEM_RECS_PATH'   USING PigStorage();

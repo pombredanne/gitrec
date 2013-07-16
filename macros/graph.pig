@@ -96,7 +96,7 @@ RETURNS nhoods {
  */
 DEFINE Graph__RandomWalk_Init(graph)
 RETURNS trans_mat, trans_mat_copy {
-    $trans_mat          =   Matrix__NormalizeRows(graph);
+    $trans_mat          =   Matrix__NormalizeRows($graph);
     $trans_mat_copy     =   FOREACH $trans_mat GENERATE *;
 };
 

@@ -10,3 +10,4 @@ USER_CONTRIB_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_contrib_rec
 USER_GENERAL_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_general_recs
 CHECKPOINT_PATH=s3n://mortar-prod-sandbox/jpacker/github/checkpoints
 DEFAULT_PARALLEL=30
+
