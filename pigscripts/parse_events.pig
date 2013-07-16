@@ -197,6 +197,12 @@ events_valued   =   FOREACH events_fork_mapped GENERATE
                         AS (specific_interest, general_interest, graph_score),
                         mapped_from_fork;
 
+events_valued   =   FOREACH events_valued GENERATE
+                        user, item,
+                        specific_interest, general_interest,
+                        (mapped_from_fork == 0 ? graph_score : graph_score / 5.0) AS graph_score,
+                        mapped_from_fork;
+
 ui_totals       =   FOREACH (GROUP events_valued BY (user, item)) GENERATE
                         FLATTEN(group)                    AS (user, item),
                         (float) SUM($1.specific_interest) AS specific_interest,

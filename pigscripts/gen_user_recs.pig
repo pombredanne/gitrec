@@ -34,7 +34,7 @@
 %default DEFAULT_PARALLEL 1
 SET default_parallel $DEFAULT_PARALLEL
 
-%default MIN_REC_ITEM_SCORE 3.0
+%default MIN_REC_ITEM_SCORE 20.0
 %default NUM_CONTRIB_RECS 20
 %default NUM_GENERAL_RECS 20
 
