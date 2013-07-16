@@ -33,6 +33,8 @@
 %default DEFAULT_PARALLEL 1
 SET default_parallel $DEFAULT_PARALLEL
 
+%default POWER_USER_FILTER_THRESHOLD 2500
+
 REGISTER 'gitrec_udfs.py' USING jython AS udfs;
 IMPORT   'utils.pig';
 
@@ -80,6 +82,10 @@ events          =   FILTER events BY (
                             type == 'PushEvent'        OR
                             type == 'WatchEvent'
                         )
+
+                        AND
+
+                        repository.name != 'try_git'
                     );
 
 events_renamed  =   FOREACH events GENERATE
@@ -138,44 +144,8 @@ gravatar_ids        =   FOREACH latest_by_user GENERATE user, gravatar_id;
 
 ----------------------------------------------------------------------------------------------------
 
--- give a weighting to each event and aggregate for each unique (user, item) pair
--- to get an "affinity score". Then we apply a logistic scaling function to map every affinity score
--- to a value between 0 and 1, so if a user pushes many many times to a repo,
--- they won't get a unreasonably high affinity score that would mess up later steps in the algorithm.
--- see udfs/jython/gitrec_udfs.py
-
-events_valued   =   FOREACH parsed_events_trim GENERATE
-                        user, item, 
-                        FLATTEN(udfs.value_event(type))
-                        AS (specific_interest, general_interest, graph_score);
-
-ui_totals       =   FOREACH (GROUP events_valued BY (user, item)) GENERATE
-                        FLATTEN(group) AS (user, item),
-                        (float) SUM(events_valued.specific_interest) AS specific_interest,
-                        (float) SUM(events_valued.general_interest)  AS general_interest,
-                        (float) SUM(events_valued.graph_score)       AS graph_score;
-
-ui_scores       =   FOREACH ui_totals GENERATE
-                        user, item,
-                        FLATTEN(udfs.scale_ui_scores(specific_interest, general_interest, graph_score))
-                        AS (specific_interest, general_interest, graph_score);
-
-ui_scores       =   FOREACH ui_scores GENERATE
-                        user, item,
-                        (float) specific_interest,
-                        (float) general_interest,
-                        (float) graph_score AS score;
-
--- aggregate affinity scores for each unique repo
-
-item_activities =   FOREACH (GROUP ui_scores BY item) GENERATE
-                        group AS item,
-                        (float) SUM(ui_scores.score) AS activity;
-
-----------------------------------------------------------------------------------------------------
-
 /*
- * If a user interact with a fork of a repo, in almost all cases
+ * If a user interacts with a fork of a repo, in almost all cases
  * it is better to give recommendations based on the original repo for that fork
  * instead of the fork itself. We don't have a way of telling for sure what the
  * original repo is, so we guess that is its the most-forked repo of the same name.
@@ -201,17 +171,67 @@ fork_map            =   FOREACH (JOIN original_items BY repo_name, unique_items 
                                       original_item AS original_item,
                             unique_items::is_a_fork AS is_a_fork;
 
-ui_scores           =   FOREACH (JOIN fork_map BY item, ui_scores BY item) GENERATE
+events_fork_mapped  =   FOREACH (JOIN fork_map BY item, parsed_events_trim BY item) GENERATE
                                          user AS user,
                             -- only use our guess at a mapping if the repo is actually a fork
                             (is_a_fork == 1 ? fork_map::original_item : fork_map::item)
                                               AS item,
-                            specific_interest AS specific_interest,
-                             general_interest AS general_interest,
-                                        score AS score,
+                                         type AS type,
                             -- is mapped_from_fork if it is a fork, and if the repo it is mapped to is not itself
                             (is_a_fork == 1 ? (fork_map::original_item != fork_map::item ? 1 : 0) : 0)
                                               AS mapped_from_fork;
+
+----------------------------------------------------------------------------------------------------
+
+/*
+ * Give a weighting to each event and aggregate for each unique (user, item) pair
+ * to get an "affinity score". Then we apply a logistic scaling function to map every affinity score
+ * to a value between 0 and 1, so if a user pushes many many times to a repo,
+ * they won't get a unreasonably high affinity score that would mess up later steps in the algorithm.
+ * See udfs/jython/gitrec_udfs.py
+ */
+
+events_valued   =   FOREACH events_fork_mapped GENERATE
+                        user, item, 
+                        FLATTEN(udfs.value_event(type))
+                        AS (specific_interest, general_interest, graph_score),
+                        mapped_from_fork;
+
+ui_totals       =   FOREACH (GROUP events_valued BY (user, item)) GENERATE
+                        FLATTEN(group)                    AS (user, item),
+                        (float) SUM($1.specific_interest) AS specific_interest,
+                        (float) SUM($1.general_interest)  AS general_interest,
+                        (float) SUM($1.graph_score)       AS graph_score,
+                        MAX($1.mapped_from_fork)          AS mapped_from_fork;
+
+ui_scores       =   FOREACH ui_totals GENERATE
+                        user, item,
+                        FLATTEN(udfs.scale_ui_scores(specific_interest, general_interest, graph_score))
+                        AS (specific_interest, general_interest, graph_score),
+                        mapped_from_fork;
+
+ui_scores       =   FOREACH ui_scores GENERATE
+                        user, item,
+                        (float) specific_interest,
+                        (float) general_interest,
+                        (float) graph_score AS score;
+
+/*
+ * Some users star a ton of repos. One user has starred 11k repos.
+ * We use an algorithm later that is O(n^2) where n is the max number of ui-scores for any user,
+ * so these star-struck users can ruin the whole party. We filter them out here.
+ * (I have a prototype of an O(n) version of the algorithm that I am working on getting ready)
+ */
+
+ui_grouped      =   GROUP ui_scores BY user;
+ui_filtered     =   FILTER ui_grouped BY COUNT($1) <= $POWER_USER_FILTER_THRESHOLD;
+ui_scores       =   FOREACH ui_filtered GENERATE FLATTEN($1);
+
+-- aggregate affinity scores for each unique repo
+
+item_activities =   FOREACH (GROUP ui_scores BY item) GENERATE
+                        group AS item,
+                        (float) SUM(ui_scores.score) AS activity;
 
 ----------------------------------------------------------------------------------------------------
 
