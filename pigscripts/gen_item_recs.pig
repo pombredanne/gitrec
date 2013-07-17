@@ -38,14 +38,15 @@ SET default_parallel $DEFAULT_PARALLEL
  * just a combination of intuition and careful observation of intermediate outputs.
  */
 
-%default MIN_LINK_WEIGHT    0.12     -- links between items will be filtered if their strength
-                                     -- is less than this value by the metric we will calculate
-%default BAYESIAN_PRIOR     25.0     -- this is to guard the collaborative filter
-                                     -- against the effects of small sample sizes
-%default MIN_REC_ITEM_SCORE 50.0     -- ensure that items below a minimum popularity threshold
-                                     -- will never be recommended
-%default NEIGHBORHOOD_SIZE  40       -- number of paths to follow on the similarity graph
-%default NUM_RECS_PER_ITEM  20       -- number of final recommendations to output for each item
+%default MIN_REC_ITEM_SCORE 50.0    -- ensure that items below a minimum popularity threshold
+                                    -- will never be recommended
+%default MIN_LINK_WEIGHT    0.12    -- links between items will be filtered if their strength
+                                    -- is less than this value by the metric we will calculate
+%default BAYESIAN_PRIOR     25.0    -- this is to guard the collaborative filter
+                                    -- against the effects of small sample sizes
+%default LOGISTIC_PARAM     0.001   -- used when boosting item links
+                                    -- based on the popularity of the item linked to
+%default NEIGHBORHOOD_SIZE  20      -- number of recommendations to output for each item
 
 IMPORT 'matrix.pig';
 IMPORT 'normalization.pig';
@@ -94,12 +95,20 @@ ii_links_filt   =   FOREACH (JOIN item_scores BY item, ii_links_raw BY col) GENE
 
 ii_links_bayes  =   Recsys__IILinksRaw_To_IILinksBayes(ii_links_filt, $BAYESIAN_PRIOR);
 
+/*
+ * Give a boost to links to more popular items, logistically scaled
+ * so super-popular items like twitter/bootstrap face diminishing returns
+ */
+
+ii_links_boost  =   FOREACH (JOIN item_scores BY item, ii_links_bayes BY col) GENERATE
+                        row AS row, col AS col,
+                        val * (float) (-1.0 + 2.0 / (1.0 + EXP(-$LOGISTIC_PARAM * score))) AS val;
 
 /*
  * To improve performance, trim all but the top NEIGHBORHOOD_SIZE links for each item.
  */
 
-ii_links        =   Matrix__TrimRows(ii_links_bayes, 'DESC', $NEIGHBORHOOD_SIZE);
+ii_links        =   Matrix__TrimRows(ii_links_boost, 'DESC', $NEIGHBORHOOD_SIZE);
 
 /*
  * We define "distance" to be the reciprocal of "affinity",
@@ -116,19 +125,7 @@ ii_links        =   Matrix__TrimRows(ii_links_bayes, 'DESC', $NEIGHBORHOOD_SIZE)
  * and renormalizes so that all values are between 0 and 1.
  */
 
-item_nhoods     =   Recsys__IILinksShortestPathsThreeSteps(ii_links, $NEIGHBORHOOD_SIZE);
-
-/*
- * Give a boost to links to more popular items,
- * and renormalize all values to be between 0 and 1.
- */
-
-item_nhoods     =   FOREACH (JOIN item_scores BY item, item_nhoods BY col) GENERATE
-                        row AS row, col AS col,
-                        -- stop boosting after score 7.5k, ~= top 2k repos ~= 1k stars, 250 forks
-                        val * (float) SQRT((score < 7500.0 ? score : 7500.0)) AS val;
-item_nhoods     =   Matrix__TrimRows(item_nhoods, 'DESC', $NUM_RECS_PER_ITEM);
-item_nhoods     =   Normalization__LinearTransform(item_nhoods, 'val', 'row, col');
+item_nhoods     =   Recsys__IILinksShortestPathsTwoSteps(ii_links, $NEIGHBORHOOD_SIZE);
 
 ----------------------------------------------------------------------------------------------------
 

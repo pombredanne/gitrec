@@ -22,7 +22,7 @@ To run one of the scripts in local mode, use:
 To run it on Mortar, edit the [paramfile](paramfiles/gitrec-cloud.params) and use:
 
 	mortar register my_gitrec
-    mortar run pigscripts/the_script.pig -f paramfiles/gitrec-cloud.params -s 21
+    mortar run pigscripts/the_script.pig -f paramfiles/gitrec-cloud.params -s 11
 
 To run all the scripts together, use `controlscripts/gitrec.py` in the commands instead of `pigscritps/the_script.pig`.
 

@@ -9,5 +9,5 @@ ITEM_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/item_recs
 USER_CONTRIB_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_contrib_recs
 USER_GENERAL_RECS_PATH=s3n://mortar-prod-sandbox/jpacker/github/user_general_recs
 CHECKPOINT_PATH=s3n://mortar-prod-sandbox/jpacker/github/checkpoints
-DEFAULT_PARALLEL=60
+DEFAULT_PARALLEL=30
 

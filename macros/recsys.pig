@@ -134,14 +134,14 @@ RETURNS ii_links {
  */
 DEFINE Recsys__IILinksRaw_To_IILinksBayes(ii_links_raw, bayesian_prior)
 RETURNS ii_links_bayes {
-    item_totals     =   FOREACH (GROUP $ii_links_raw BY row) GENERATE
+    item_totals     =   FOREACH (GROUP $ii_links_raw BY col) GENERATE
                             group AS item,
-                            SUM($ii_links_raw.val) AS total;
+                            (float) SUM($ii_links_raw.val) AS total;
 
     $ii_links_bayes =   FOREACH (JOIN item_totals BY item, $ii_links_raw BY col) GENERATE
                             $ii_links_raw::row AS row,
                             $ii_links_raw::col AS col,
-                            $ii_links_raw::val / (item_totals::total + $bayesian_prior) AS val;
+                            (float) ($ii_links_raw::val / (item_totals::total + $bayesian_prior)) AS val;
 };
 
 ----------------------------------------------------------------------------------------------------
